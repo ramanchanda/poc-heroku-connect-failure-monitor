@@ -43,7 +43,7 @@ const mg = mailgun.client({
   key: MAILGUN_API_KEY
 });
 
-const FROM_EMAIL = `alerts@${MAILGUN_DOMAIN}`;
+const FROM_EMAIL = `Mailgun Sandbox <postmaster@${MAILGUN_DOMAIN}`;
 
 /* ===========================
    SQL
