@@ -63,7 +63,9 @@ async function run() {
     console.log('Syncing FAILED records from _trigger_log...');
     await client.query(INSERT_FAILED_SQL);
 
-    console.log('Fetching unnotified failures...');
+    console.log('Insert to table custom.failed_records complete...');
+
+    console.log('Fetching unnotified failures from table custom.failed_records...');
     const { rows } = await client.query(FETCH_UNNOTIFIED_SQL);
 
     if (rows.length === 0) {
