@@ -163,7 +163,7 @@ async function run() {
 
     if (!rows || rows.length === 0) {
         console.log(
-          '\x1b[1m\x1b[32mNo new FAILED records found in table custom.failed_records\x1b[0m'
+          '\x1b[1m\x1b[32mNo new unnotified FAILED records found in table custom.failed_records\x1b[0m'
         );      return;
     }
         console.log(
@@ -183,9 +183,13 @@ async function run() {
         html: htmlBody
       });
 
-      console.log('Email sent successfully');
+      console.log(
+        '\x1b[1m\x1b[32mEmail sent successfully\x1b[0m'
+      );
 
-      console.log('Marking records as notified...');
+      console.log(
+        '\x1b[1m\x1b[32mMarking records as notified...\x1b[0m'
+      );
       await client.query(MARK_NOTIFIED_SQL, [triggerIds]);
     } catch (mailError) {
       // Mail issues must NEVER crash the dyno
@@ -195,7 +199,9 @@ async function run() {
     }
 
   } catch (err) {
-    console.error('Error while processing FAILED records');
+    console.error(
+      '\x1b[1m\x1b[31mError while processing FAILED records\x1b[0m'
+    );
     console.error(err);
   } finally {
     if (client) client.release();
