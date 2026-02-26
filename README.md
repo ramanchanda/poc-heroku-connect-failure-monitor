@@ -57,7 +57,7 @@ Application / SQL    Heroku Postgres DB      Heroku Connect                     
 
 
 
-Participants:
+Components:
 - Application / SQL
 - Heroku Postgres DB
 - Heroku Connect
