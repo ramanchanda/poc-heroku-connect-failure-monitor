@@ -53,3 +53,42 @@ Application / SQL    Heroku Postgres DB      Heroku Connect                     
         |                     |<------------------------------------------------------------------------------------------------|                   |
         |                     |                    |                                   |                                        |                   | 
         |                     |                    |                                   |                                        |                   | 
+
+
+
+
+Participants:
+- Application / SQL
+- Heroku Postgres DB
+- Heroku Connect
+- Salesforce
+- Scheduler / Worker
+- Mailgun
+
+Flow:
+
+1. Application performs INSERT / UPDATE on Postgres table.
+2. Row is written to Heroku Postgres DB.
+3. Heroku Connect detects change and writes to salesforce._trigger_log table.
+4. Heroku Connect pushes record to Salesforce.
+5. Salesforce rejects record (e.g., validation rule failure).
+6. Heroku Connect updates entry to:
+      salesforce._trigger_log
+      state = FAILED
+
+7. Scheduler / Worker (runs every X minutes):
+      → Checks salesforce._trigger_log for FAILED records.
+
+8. Inserts new FAILED records into:
+      custom.failed_records
+
+9. Selects unnotified FAILED records from:
+      custom.failed_records
+
+10. Sends HTML email notification via Mailgun.
+
+11. Mailgun delivers email.
+
+12. System updates:
+      custom.failed_records
+      set notified = true
