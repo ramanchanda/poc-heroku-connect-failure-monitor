@@ -58,9 +58,7 @@ SELECT id, txid, created_at, updated_at, processed_at, processed_tx,
        sf_result, sf_message
 FROM salesforce._trigger_log
 WHERE state = 'FAILED'
-AND id NOT IN (
-  SELECT trigger_log_id FROM custom.failed_records
-);
+ON CONFLICT (trigger_log_id) DO NOTHING;
 `;
 
 const FETCH_UNNOTIFIED_SQL = `
@@ -84,13 +82,18 @@ WHERE trigger_log_id = ANY($1);
 function buildHtmlEmail(rows) {
   const tableRows = rows.map(r => `
     <tr>
+      <td>${r.trigger_log_id}</td>
+      <td>${r.txid || 'N/A'}</td>
       <td>${r.table_name}</td>
       <td>${r.action}</td>
       <td>${r.record_id}</td>
       <td>${r.sfid || 'N/A'}</td>
       <td>${r.sf_result || 'N/A'}</td>
-      <td style="max-width:400px; word-wrap:break-word;">
+      <td style="max-width:300px; word-wrap:break-word;">
         ${r.sf_message || 'N/A'}
+      </td>
+      <td style="max-width:300px; word-wrap:break-word; font-size:11px;">
+        ${r.values || 'N/A'}
       </td>
       <td>${new Date(r.created_at).toLocaleString()}</td>
     </tr>
@@ -107,16 +110,19 @@ function buildHtmlEmail(rows) {
       <strong>Total Failed Records:</strong> ${rows.length}
     </p>
 
-    <table border="1" cellpadding="8" cellspacing="0"
-      style="border-collapse:collapse; width:100%; font-size:13px;">
+    <table border="1" cellpadding="6" cellspacing="0"
+      style="border-collapse:collapse; width:100%; font-size:12px;">
       <thead style="background:#f5f5f5;">
         <tr>
+          <th>Trigger Log ID</th>
+          <th>TXID</th>
           <th>Table</th>
           <th>Action</th>
           <th>Record ID</th>
           <th>SFID</th>
           <th>Error Code</th>
           <th>Error Message</th>
+          <th>Values</th>
           <th>Created At</th>
         </tr>
       </thead>
