@@ -148,12 +148,13 @@ async function run() {
   try {
     client = await pool.connect();
 
-    console.log('Syncing FAILED records from salesforce._trigger_log...');
-    await client.query(INSERT_FAILED_SQL);
+    console.log('\n=== Syncing FAILED records from salesforce._trigger_log ===');
 
-    console.log('Insert to table custom.failed_records complete...');
+    const insertResult = await client.query(INSERT_FAILED_SQL);
 
-
+    console.log(
+      `\x1b[1mInserted ${insertResult.rowCount} new FAILED record(s) into custom.failed_records\x1b[0m`
+    );
     console.log('Fetching unnotified FAILED records from table custom.failed_records...');
     const { rows } = await client.query(
       FETCH_UNNOTIFIED_SQL,
@@ -161,12 +162,13 @@ async function run() {
     );
 
     if (!rows || rows.length === 0) {
-      console.log('No new FAILED records found in table custom.failed_records');
-      return;
+        console.log(
+          '\x1b[1m\x1b[32mNo new FAILED records found in table custom.failed_records\x1b[0m'
+        );      return;
     }
-
-    console.log(`${rows.length} FAILED record(s) detected in table custom.failed_records`);
-
+        console.log(
+          `\x1b[1m\x1b[31m${rows.length} FAILED record(s) detected in table custom.failed_records\x1b[0m`
+        );
     const htmlBody = buildHtmlEmail(rows);
     const triggerIds = rows.map(r => r.trigger_log_id);
 
