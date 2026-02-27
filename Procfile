@@ -1,0 +1,1 @@
+worker: node process_failed_records.js
