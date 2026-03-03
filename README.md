@@ -15,7 +15,7 @@ UPDATE notified = true
 
 
 
-Application / SQL    Heroku Postgres DB      Heroku Connect                        Salesforce                      Scheduler / Worker           Mailgun
+Application / SQL         Heroku Postgres DB      Heroku Connect                        Salesforce                         Scheduler / Worker        Mailgun
         |                        |                    |                                    |                                        |                   |
         | INSERT/UPDATE/DELETE   |                    |                                    |                                        |                   |
         |----------------------->|                    |                                    |                                        |                   |
