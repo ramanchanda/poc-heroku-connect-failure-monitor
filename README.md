@@ -16,44 +16,44 @@ UPDATE notified = true
 
 
 Application / SQL    Heroku Postgres DB      Heroku Connect                        Salesforce                      Scheduler / Worker           Mailgun
-        |                     |                    |                                    |                                        |                   |
-        | INSERT / UPDATE     |                    |                                    |                                        |                   |
-        |-------------------->|                    |                                    |                                        |                   |
-        |                     |  Row written       |                                    |                                        |                   |
-        |                     |------------------->|                                    |                                        |                   |
-        |                     | Object and s._t_l  | Push to SF                         |                                        |                   |
-        |                     |                    |----------------------------------->|                                        |                   |
-        |                     |                    |                                    | Reject (validation)                    |                   |
-        |                     |                    |                                    |                                        |                   |
-        |                     |                    | Update to salesforce._trigger_log  |                                        |                   |
-        |                     |                    |<-----------------------------------|                                        |                   |
-        |                     |                    |                                    |                                        |                   |
-        |                     |<-------------------|                                    |                                        |                   |
-        |                     | state = FAILED     |                                    |                                        |                   |
-        |                     |                    |                                    |                                        |                   |
-        |                     |                    |                                    |                     (Runs every X mins)|                   |
-        |                     |<-------------------------------------------------------------------------------------------------|                   |
-        |                     |                    |   Start job -  Checks salesforce.trigger_log for records with FAILED state  |                   |
-        |                     |                    |                                    |                                        |                   |
-        |                     |                    |                                    |                                        |                   |
-        |                     |                    |                                    |                                        |                   |
-        |                     |                    |                         INSERT new FAILED records to custom.failed_records  |                   |
-        |                     |<-------------------------------------------------------------------------------------------------|                   |
-        |                     |                    |                                    |                                        |                   |
-        |                     |                    |                                    |                                        |                   |
-        |                     |                    |                SELECT unnotified  FAILED records from custom.failed_records |                   |
-        |                     |<-------------------------------------------------------------------------------------------------|                   | 
-        |                     |                    |                                    |                                        |                   |
-        |                     |                    |                                    |                                        | Send email        |
-        |                     |                    |                                    |                                        |------------------>|
-        |                     |                    |                                    |                                        |                   | Deliver mail
-        |                     |                    |                                    |                                        |                   |
-        |                     |                    |                                    |                                        |                   |
-        |                     |                    |                            UPDATE  notified records in custom.failed_records|                   |
-        |                     |<-------------------------------------------------------------------------------------------------|                   |
-        |                     |                    |                                    |                                        |                   | 
-        |                     |                    |                                    |                                        |                   | 
-
+        |                        |                    |                                    |                                        |                   |
+        | INSERT/UPDATE/DELETE   |                    |                                    |                                        |                   |
+        |----------------------->|                    |                                    |                                        |                   |
+        |                        |  Row written       |                                    |                                        |                   |
+        |                        |------------------->|                                    |                                        |                   |
+        |                        | Object and s._t_l  | Push to SF                         |                                        |                   |
+        |                        |                    |----------------------------------->|                                        |                   |
+        |                        |                    |                                    | Reject (validation)                    |                   |
+        |                        |                    |                                    |                                        |                   |
+        |                        |                    | Update to salesforce._trigger_log  |                                        |                   |
+        |                        |                    |<-----------------------------------|                                        |                   |
+        |                        |                    |                                    |                                        |                   |
+        |                        |<-------------------|                                    |                                        |                   |
+        |                        | state = FAILED     |                                    |                                        |                   |
+        |                        |                    |                                    |                                        |                   |
+        |                        |                    |                                    |                     (Runs every X mins)|                   |
+        |                        |<-------------------------------------------------------------------------------------------------|                   |
+        |                        |                    |   Start job -  Checks salesforce.trigger_log for records with FAILED state  |                   |
+        |                        |                    |                                    |                                        |                   |
+        |                        |                    |                                    |                                        |                   |
+        |                        |                    |                                    |                                        |                   |
+        |                        |                    |                         INSERT new FAILED records to custom.failed_records  |                   |
+        |                        |<-------------------------------------------------------------------------------------------------|                   |
+        |                        |                    |                                    |                                        |                   |
+        |                        |                    |                                    |                                        |                   |
+        |                        |                    |                SELECT unnotified  FAILED records from custom.failed_records |                   |
+        |                        |<-------------------------------------------------------------------------------------------------|                   | 
+        |                        |                    |                                    |                                        |                   |
+        |                        |                    |                                    |                                        | Send email        |
+        |                        |                    |                                    |                                        |------------------>|
+        |                        |                    |                                    |                                        |                   | Deliver mail
+        |                        |                    |                                    |                                        |                   |
+        |                        |                    |                                    |                                        |                   |
+        |                        |                    |                            UPDATE  notified records in custom.failed_records|                   |
+        |                        |<-------------------------------------------------------------------------------------------------|                   |
+        |                        |                    |                                    |                                        |                   | 
+        |                        |                    |                                    |                                        |                   | 
+   
 
 
 
