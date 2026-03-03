@@ -65,7 +65,7 @@ const FETCH_UNNOTIFIED_SQL = `
 SELECT *
 FROM custom.failed_records
 WHERE notified = false
-ORDER BY created_at DESC
+ORDER BY created_at ASC
 LIMIT $1;
 `;
 
