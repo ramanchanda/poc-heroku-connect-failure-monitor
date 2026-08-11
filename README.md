@@ -39,8 +39,8 @@ The following Config Vars are required during deployment:
 Production database connections are configured using the following naming convention:
 
 ```text
-database_url_<app_name>
-schema_<app_name>_<salesforceOrgID>
+database_url_<app_name>_<dbid>
+schema_<app_name>_<dbid>_<salesforceOrgID>
 ```
 
 ---
@@ -201,7 +201,7 @@ notified = true
 
 ## 1. Architecture Overview
 
-The new architecture uses **one centralized monitoring application (App A)** to monitor multiple production environments. Each production application/database can have one or more Heroku Connect schemas, with each schema associated with a different Salesforce Org. App A uses Config Vars following the `database_url_<app_name>` and `schema_<app_name>_<salesforceOrgID>` naming convention to identify the appropriate production database and Heroku Connect schema, reads `FAILED` records from each `<schema>._trigger_log`, and writes them to a centralized **Notification DB (A-DB)**. A-DB maintains separate schemas for each Salesforce Org, allowing failure records to remain logically isolated. App A then retrieves unnotified failures from the appropriate A-DB schema, sends email notifications through Mailgun/SendGrid, and marks successfully notified records as `notified = true`.
+The new architecture uses **one centralized monitoring application (App A)** to monitor multiple production environments. Each production application can have one or more production databases, and each production database can have one or more Heroku Connect schemas, with each schema associated with a Salesforce Org. App A uses Config Vars following the `database_url_<app_name>_<dbid>` and `schema_<app_name>_<dbid>_<salesforceOrgID>` naming convention to identify the appropriate production database and Heroku Connect schema, reads `FAILED` records from each `<schema>._trigger_log`, and writes them to a centralized **Notification DB (A-DB)**. A-DB maintains separate schemas for each Salesforce Org, allowing failure records to remain logically isolated. App A then retrieves unnotified failures from the appropriate A-DB schema, sends email notifications through Mailgun/SendGrid, and marks successfully notified records as `notified = true`.
 
 Production databases are **read-only from App A's perspective**. All schema/table creation, inserts, selects for notification processing, and updates to `notified` are performed only on the central A-DB.
 
@@ -360,7 +360,7 @@ database_url_app2    # Production DB for app2
 ...
 
 schema_app1_salesforceOrg1 = salesforce
-schema_app1_salesforceOrg2 = salesforce
+schema_app1_db1_salesforceOrg2 = salesforce
 schema_app2_salesforceOrg3 = salesforce
 ...
 ```
@@ -368,35 +368,35 @@ schema_app2_salesforceOrg3 = salesforce
 The configuration convention is:
 
 ```text
-database_url_<app_name>
-schema_<app_name>_<salesforceOrgID>
+database_url_<app_name>_<dbid>
+schema_<app_name>_<dbid>_<salesforceOrgID>
 ```
 
-The **Config Var name identifies the application and Salesforce Org**, while the **Config Var value contains the actual Heroku Connect schema name**.
+The **Config Var name identifies the application, database, and Salesforce Org**, while the **Config Var value contains the actual production database connection URL or Heroku Connect schema name**.
 
 For example:
 
 ```text
-database_url_app1
-schema_app1_salesforceOrg1 = salesforce
-schema_app1_salesforceOrg2 = salesforce
+database_url_app1_db1
+schema_app1_db1_salesforceOrg1 = salesforce
+schema_app1_db1_salesforceOrg2 = salesforce
 
-database_url_app2
-schema_app2_salesforceOrg3 = salesforce
+database_url_app2_db1
+schema_app2_db1_salesforceOrg3 = salesforce
 ```
 
-This supports multiple Salesforce Orgs using the same production database/schema:
+This supports multiple databases within the same application and multiple Salesforce Orgs/Heroku Connect schemas within each database:
 
 ```text
-Production DB 1
-├── salesforce._trigger_log → Salesforce Org 1
-└── salesforce._trigger_log → Salesforce Org 2
-
-Production DB 2
-└── salesforce._trigger_log → Salesforce Org 3
+Application 1
+├── Production DB 1
+│   ├── salesforce._trigger_log → Salesforce Org 1
+│   └── salesforce._trigger_log → Salesforce Org 2
+└── Production DB 2
+    └── salesforce._trigger_log → Salesforce Org 3
 ```
 
-The Config Var name provides the logical Salesforce Org identity even when the source schema name is identical.
+The Config Var name provides the logical application, database, and Salesforce Org identity even when the source schema name is identical.
 
 ---
 
@@ -419,15 +419,17 @@ const notificationPool = new Pool({
 
 #### Production DBs — Read Only
 
-A separate connection pool is created for each configured production application:
+A separate connection pool is created for each configured production database:
 
 ```js
 const sourcePools = new Map();
 
-function getSourcePool(appName, databaseUrl) {
-  if (!sourcePools.has(appName)) {
+function getSourcePool(appName, dbId, databaseUrl) {
+  const poolKey = `${appName}_${dbId}`;
+
+  if (!sourcePools.has(poolKey)) {
     sourcePools.set(
-      appName,
+      poolKey,
       new Pool({
         connectionString: databaseUrl,
         ssl: databaseUrl.includes('localhost')
@@ -437,7 +439,7 @@ function getSourcePool(appName, databaseUrl) {
     );
   }
 
-  return sourcePools.get(appName);
+  return sourcePools.get(poolKey);
 }
 ```
 
@@ -458,17 +460,22 @@ function loadSourceConfig() {
   for (const key of Object.keys(process.env)) {
     if (!key.startsWith('schema_')) continue;
 
-    const match = key.match(/^schema_(.+)_(salesforceOrg[^_]+)$/);
+    const match = key.match(
+      /^schema_(.+)_(.+)_(salesforceOrg[^_]+)$/
+    );
 
     if (!match) {
-      console.warn(`Ignoring invalid schema config var: ${key}`);
+      console.warn(`Ignoring invalid schema Config Var: ${key}`);
       continue;
     }
 
-    const [, appName, salesforceOrgId] = match;
+    const [, appName, dbId, salesforceOrgId] = match;
 
-    const databaseUrlKey = `database_url_${appName}`;
-    const databaseUrl = process.env[databaseUrlKey];
+    const databaseUrlKey =
+      `database_url_${appName}_${dbId}`;
+
+    const databaseUrl =
+      process.env[databaseUrlKey];
 
     if (!databaseUrl) {
       console.warn(
@@ -480,14 +487,19 @@ function loadSourceConfig() {
     const sourceSchema = process.env[key];
 
     if (!sourceSchema) {
-      console.warn(`Empty schema value for ${key}; source will be skipped`);
+      console.warn(
+        `Empty schema value for ${key}; source will be skipped`
+      );
       continue;
     }
 
     sources.push({
-      appName,
-      salesforceOrgId: validateIdentifier(salesforceOrgId),
-      sourceSchema: validateIdentifier(sourceSchema),
+      appName: validateIdentifier(appName),
+      dbId: validateIdentifier(dbId),
+      salesforceOrgId:
+        validateIdentifier(salesforceOrgId),
+      sourceSchema:
+        validateIdentifier(sourceSchema),
       databaseUrl
     });
   }
@@ -507,6 +519,7 @@ becomes:
 ```js
 {
   appName: "app1",
+  dbId: "db1",
   salesforceOrgId: "salesforceOrg1",
   sourceSchema: "salesforce",
   databaseUrl: "..."
@@ -760,6 +773,7 @@ The header can include:
 ```html
 <strong>Environment:</strong> ${NODE_ENV}<br/>
 <strong>Application:</strong> ${source.appName}<br/>
+<strong>Database:</strong> ${source.dbId}<br/>
 <strong>Salesforce Org:</strong> ${source.salesforceOrgId}<br/>
 <strong>Source Schema:</strong> ${source.sourceSchema}<br/>
 <strong>Total Failed Records:</strong> ${rows.length}
@@ -804,6 +818,7 @@ Each configured application/Salesforce Org is processed independently:
 async function processSource(source) {
   const sourcePool = getSourcePool(
     source.appName,
+    source.dbId,
     source.databaseUrl
   );
 
