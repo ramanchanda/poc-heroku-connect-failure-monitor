@@ -1,7 +1,3 @@
-## Documentation
-
-[**README**](./README.md) | [**MULTI_APP_SALESFORCEORG_SCHEMA_ARCHITECTURE**](./MULTI_APP_SALESFORCEORG_SCHEMA_ARCHITECTURE.md)
-
 # poc-heroku-connect-failure-monitor
 
 ## Disclaimer
