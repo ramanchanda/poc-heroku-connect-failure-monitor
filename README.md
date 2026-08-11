@@ -1,4 +1,4 @@
-# poc-heroku-connect-failure-monitor
+# Heroku Connect Failure Monitor — POC
 
 ## Disclaimer
 
@@ -42,12 +42,6 @@ Production database connections are configured using the following naming conven
 database_url_<app_name>
 schema_<app_name>_<salesforceOrgID>
 ```
-
-# poc-heroku-connect-failure-monitor
-
-Centralized monitoring application for Heroku Connect synchronization failures across multiple production applications and Salesforce Orgs.
-
-[![Deploy to Heroku](https://www.herokucdn.com/deploy/button.svg)](https://www.heroku.com/deploy?template=https://github.com/<YOUR_ORG>/<YOUR_REPOSITORY>)
 
 ---
 
@@ -202,7 +196,6 @@ notified = true
 ```
 
 ---
----
 
 # Heroku Connect Failure Monitor — Architecture II - Multi-App / Multi-Salesforce Org / Multi-HC Schema
 
@@ -214,11 +207,148 @@ Production databases are **read-only from App A's perspective**. All schema/tabl
 
 ---
 
-## 2. What Would the Code Changes Be?
+## 2. Architecture Flow
+
+```mermaid
+flowchart TD
+    A[Production DB 1] --> A1[HC Schema / Salesforce Org 1]
+    A --> A2[HC Schema / Salesforce Org 2]
+    B[Production DB 2] --> B1[HC Schema / Salesforce Org 3]
+    C[Production DB N] --> C1[HC Schemas / Salesforce Orgs ...]
+
+    A1 -->|READ ONLY: FAILED records| M[App A - Centralized Monitoring]
+    A2 -->|READ ONLY: FAILED records| M
+    B1 -->|READ ONLY: FAILED records| M
+    C1 -->|READ ONLY: FAILED records| M
+
+    M -->|CREATE SCHEMA / TABLE| D[A-DB - Notification DB]
+    M -->|INSERT FAILED records| D
+    D --> O1[Salesforce Org 1 Schema]
+    D --> O2[Salesforce Org 2 Schema]
+    D --> O3[Salesforce Org 3 Schema]
+    D --> OM[Salesforce Org M Schema]
+
+    M -->|SELECT notified = false| D
+    M -->|Send notification| E[Mailgun / SendGrid]
+    E -->|Successful delivery| M
+    M -->|UPDATE notified = true| D
+```
+
+The production databases are read-only sources. All schema creation and notification-record DML is performed on A-DB.
+
+## 3. Flow
+
+### Current
+
+```text
+                 DATABASE_URL
+                      │
+             ┌────────┴────────┐
+             │                 │
+           READ              WRITE
+             │                 │
+     _trigger_log       failed_records
+             │                 │
+             └────────┬────────┘
+                      │
+                   Mailgun
+```
+
+### New
+
+```text
+       database_url_app1
+              │
+     ┌────────┴────────┐
+     │                 │
+ schema Org1       schema Org2
+     │                 │
+     ▼                 ▼
+ FAILED records   FAILED records
+     │                 │
+     └────────┬────────┘
+              │
+              ▼
+             App A
+              │
+              ▼
+             A-DB
+       ┌──────┴──────┐
+       │             │
+    Org1 schema   Org2 schema
+       │             │
+       └──────┬──────┘
+              │
+              ▼
+           Mailgun
+```
+
+The **Mailgun logic remains largely unchanged**. The major refactoring is the database/configuration layer: multiple read-only production DB connections, a single read/write A-DB connection, dynamic source/schema discovery, A-DB schema provisioning, and independent processing per Salesforce Org.
+
+---
+
+## 4. Database Permission Model
+
+### Production Databases
+
+App A should have **read-only access** to the relevant Heroku Connect schemas:
+
+```text
+Production DB 1
+├── salesforce._trigger_log    ← READ ONLY
+└── ...
+
+Production DB 2
+├── salesforce._trigger_log    ← READ ONLY
+└── ...
+
+Production DB N
+└── ...
+```
+
+App A should not perform:
+
+```text
+INSERT
+UPDATE
+DELETE
+CREATE
+ALTER
+DROP
+```
+
+against production databases.
+
+### A-DB
+
+App A has the required read/write permissions on the centralized Notification DB:
+
+```text
+A-DB
+├── salesforceOrg1.failed_records
+├── salesforceOrg2.failed_records
+├── salesforceOrg3.failed_records
+└── ...
+```
+
+Normal runtime operations are:
+
+```text
+CREATE SCHEMA / TABLE → Provisioning
+INSERT                 → Store new FAILED records
+SELECT                 → Retrieve unnotified records
+UPDATE                 → Set notified = true
+```
+
+If dynamic schema/table provisioning is enabled, the A-DB credentials need the required DDL privileges.
+
+---
+
+## 5. What Would the Code Changes Be?
 
 The main code change is to separate the **source database connections** from the **central notification DB connection**. The current implementation uses one `DATABASE_URL` for both reading `salesforce._trigger_log` and writing `custom.failed_records`. The new implementation uses `DATABASE_URL` only for the central Notification DB (A-DB), while production database connections are discovered from Config Vars and used only for reading Heroku Connect `_trigger_log` tables.
 
-### 2.1 Configuration Changes
+### 5.1 Configuration Changes
 
 Use the following Config Var convention:
 
@@ -270,7 +400,7 @@ The Config Var name provides the logical Salesforce Org identity even when the s
 
 ---
 
-### 2.2 Database Connection Model
+### 5.2 Database Connection Model
 
 The application uses two types of database connections.
 
@@ -317,7 +447,7 @@ App A performs `SELECT` operations against production databases but does not per
 
 ---
 
-### 2.3 Discover the Configured Source Schemas
+### 5.3 Discover the Configured Source Schemas
 
 The application discovers `schema_<app_name>_<salesforceOrgID>` Config Vars from `process.env`.
 
@@ -385,7 +515,7 @@ becomes:
 
 ---
 
-### 2.4 Validate SQL Identifiers
+### 5.4 Validate SQL Identifiers
 
 Because schema names are SQL identifiers, values used to construct dynamic SQL should be validated.
 
@@ -403,7 +533,7 @@ This validation is applied to both source schema names and Salesforce Org IDs us
 
 ---
 
-### 2.5 Automatically Create A-DB Schemas and Tables
+### 5.5 Automatically Create A-DB Schemas and Tables
 
 The central A-DB maintains a separate schema for each Salesforce Org.
 
@@ -458,7 +588,7 @@ The application therefore needs the appropriate DDL privileges on A-DB if it is 
 
 ---
 
-### 2.6 Read Failed Records from Production DBs
+### 5.6 Read Failed Records from Production DBs
 
 The source database is queried only for failed Heroku Connect records.
 
@@ -509,7 +639,7 @@ Production DB
 
 ---
 
-### 2.7 Insert Failed Records into A-DB
+### 5.7 Insert Failed Records into A-DB
 
 Each Salesforce Org writes to its corresponding A-DB schema.
 
@@ -590,7 +720,7 @@ async function insertFailedRecords(
 
 ---
 
-### 2.8 Fetch Unnotified Records from A-DB
+### 5.8 Fetch Unnotified Records from A-DB
 
 The notification query is now executed only against A-DB:
 
@@ -617,7 +747,7 @@ async function fetchUnnotifiedRecords(targetSchema) {
 
 ---
 
-### 2.9 Include Application and Salesforce Org in the Email
+### 5.9 Include Application and Salesforce Org in the Email
 
 The email can identify which application and Salesforce Org generated the failure:
 
@@ -639,7 +769,7 @@ This is particularly useful when App A monitors multiple applications and Salesf
 
 ---
 
-### 2.10 Mark Records as Notified in A-DB
+### 5.10 Mark Records as Notified in A-DB
 
 After successful email delivery:
 
@@ -666,7 +796,7 @@ The production databases are never updated.
 
 ---
 
-### 2.11 Process Each Source Independently
+### 5.11 Process Each Source Independently
 
 Each configured application/Salesforce Org is processed independently:
 
@@ -769,139 +899,3 @@ async function run() {
 
 This means a problem with one production application or Salesforce Org does not prevent the remaining configured sources from being processed.
 
----
-
-## 3. Database Permission Model
-
-### Production Databases
-
-App A should have **read-only access** to the relevant Heroku Connect schemas:
-
-```text
-Production DB 1
-├── salesforce._trigger_log    ← READ ONLY
-└── ...
-
-Production DB 2
-├── salesforce._trigger_log    ← READ ONLY
-└── ...
-
-Production DB N
-└── ...
-```
-
-App A should not perform:
-
-```text
-INSERT
-UPDATE
-DELETE
-CREATE
-ALTER
-DROP
-```
-
-against production databases.
-
-### A-DB
-
-App A has the required read/write permissions on the centralized Notification DB:
-
-```text
-A-DB
-├── salesforceOrg1.failed_records
-├── salesforceOrg2.failed_records
-├── salesforceOrg3.failed_records
-└── ...
-```
-
-Normal runtime operations are:
-
-```text
-CREATE SCHEMA / TABLE → Provisioning
-INSERT                 → Store new FAILED records
-SELECT                 → Retrieve unnotified records
-UPDATE                 → Set notified = true
-```
-
-If dynamic schema/table provisioning is enabled, the A-DB credentials need the required DDL privileges.
-
----
-
-## 4. Architecture Flow
-
-```mermaid
-flowchart TD
-    A[Production DB 1] --> A1[HC Schema / Salesforce Org 1]
-    A --> A2[HC Schema / Salesforce Org 2]
-    B[Production DB 2] --> B1[HC Schema / Salesforce Org 3]
-    C[Production DB N] --> C1[HC Schemas / Salesforce Orgs ...]
-
-    A1 -->|READ ONLY: FAILED records| M[App A - Centralized Monitoring]
-    A2 -->|READ ONLY: FAILED records| M
-    B1 -->|READ ONLY: FAILED records| M
-    C1 -->|READ ONLY: FAILED records| M
-
-    M -->|CREATE SCHEMA / TABLE| D[A-DB - Notification DB]
-    M -->|INSERT FAILED records| D
-    D --> O1[Salesforce Org 1 Schema]
-    D --> O2[Salesforce Org 2 Schema]
-    D --> O3[Salesforce Org 3 Schema]
-    D --> OM[Salesforce Org M Schema]
-
-    M -->|SELECT notified = false| D
-    M -->|Send notification| E[Mailgun / SendGrid]
-    E -->|Successful delivery| M
-    M -->|UPDATE notified = true| D
-```
-
-The production databases are read-only sources. All schema creation and notification-record DML is performed on A-DB.
-
-## 5. Flow
-
-### Current
-
-```text
-                 DATABASE_URL
-                      │
-             ┌────────┴────────┐
-             │                 │
-           READ              WRITE
-             │                 │
-     _trigger_log       failed_records
-             │                 │
-             └────────┬────────┘
-                      │
-                   Mailgun
-```
-
-### New
-
-```text
-       database_url_app1
-              │
-     ┌────────┴────────┐
-     │                 │
- schema Org1       schema Org2
-     │                 │
-     ▼                 ▼
- FAILED records   FAILED records
-     │                 │
-     └────────┬────────┘
-              │
-              ▼
-             App A
-              │
-              ▼
-             A-DB
-       ┌──────┴──────┐
-       │             │
-    Org1 schema   Org2 schema
-       │             │
-       └──────┬──────┘
-              │
-              ▼
-           Mailgun
-```
-
-The **Mailgun logic remains largely unchanged**. The major refactoring is the database/configuration layer: multiple read-only production DB connections, a single read/write A-DB connection, dynamic source/schema discovery, A-DB schema provisioning, and independent processing per Salesforce Org.
