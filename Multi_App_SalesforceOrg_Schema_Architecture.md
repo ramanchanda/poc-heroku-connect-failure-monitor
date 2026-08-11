@@ -1,4 +1,4 @@
-# Heroku Connect Failure Monitor — New Architecture - Multi App - SalesforceOrg_HC/Schema
+# Heroku Connect Failure Monitor — New Architecture - Multi App-SalesforceOrg_HC/Schema
 
 ## 1. Architecture Overview
 
