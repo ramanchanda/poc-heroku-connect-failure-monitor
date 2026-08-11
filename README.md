@@ -257,30 +257,32 @@ The production databases are read-only sources. All schema creation and notifica
 ### New
 
 ```text
-       database_url_app1
-              │
-     ┌────────┴────────┐
-     │                 │
- schema Org1       schema Org2
-     │                 │
-     ▼                 ▼
- FAILED records   FAILED records
-     │                 │
-     └────────┬────────┘
-              │
-              ▼
-             App A
-              │
-              ▼
-             A-DB
-       ┌──────┴──────┐
-       │             │
-    Org1 schema   Org2 schema
-       │             │
-       └──────┬──────┘
-              │
-              ▼
-           Mailgun
+                  database_url_app1_db1
+                          │
+                 ┌────────┴────────┐
+                 │                 │
+                 ▼                 ▼
+ schema_app1_db1_salesforceOrg1   schema_app1_db1_salesforceOrg2
+                 │                 │
+                 ▼                 ▼
+          FAILED records     FAILED records
+                 │                 │
+                 └────────┬────────┘
+                          │
+                          ▼
+                        App A
+                          │
+                          ▼
+                         A-DB
+                    ┌─────┴─────┐
+                    │           │
+                    ▼           ▼
+              Org1 schema   Org2 schema
+                    │           │
+                    └─────┬─────┘
+                          │
+                          ▼
+                       Mailgun
 ```
 
 The **Mailgun logic remains largely unchanged**. The major refactoring is the database/configuration layer: multiple read-only production DB connections, a single read/write A-DB connection, dynamic source/schema discovery, A-DB schema provisioning, and independent processing per Salesforce Org.
