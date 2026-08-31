@@ -1,0 +1,47 @@
+{
+  "name": "Heroku Connect Failure Monitor",
+  "description": "Centralized monitoring application for Heroku Connect synchronization failures across multiple production applications and Salesforce Orgs.",
+  "keywords": [
+    "heroku",
+    "heroku-connect",
+    "salesforce",
+    "postgresql",
+    "monitoring",
+    "nodejs"
+  ],
+  "repository": "https://github.com/<YOUR_ORG>/<YOUR_REPOSITORY>",
+
+  "env": {
+    "MAILGUN_API_KEY": {
+      "description": "Mailgun API key used to send Heroku Connect failure notifications.",
+      "required": true
+    },
+    "MAILGUN_DOMAIN": {
+      "description": "Mailgun domain used to send Heroku Connect failure notifications.",
+      "required": true
+    },
+    "ALERT_EMAIL_TO": {
+      "description": "Email address that receives Heroku Connect failure notifications.",
+      "required": true
+    }
+  },
+
+  "addons": [
+    {
+      "plan": "heroku-postgresql:standard-0",
+      "as": "DATABASE"
+    },
+    {
+      "plan": "mailgun:concept50k"
+    },
+    {
+      "plan": "scheduler:standard"
+    }
+  ],
+
+  "buildpacks": [
+    {
+      "url": "heroku/nodejs"
+    }
+  ]
+}
