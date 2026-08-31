@@ -58,7 +58,7 @@ SELECT id, txid, created_at, updated_at, processed_at, processed_tx,
        sf_result, sf_message
 FROM salesforce._trigger_log
 WHERE state = 'FAILED'
-ON CONFLICT (trigger_log_id) DO NOTHING;
+ON CONFLICT (trigger_log_id, updated_at) DO NOTHING;
 `;
 
 const FETCH_UNNOTIFIED_SQL = `
@@ -72,7 +72,7 @@ LIMIT $1;
 const MARK_NOTIFIED_SQL = `
 UPDATE custom.failed_records
 SET notified = true
-WHERE trigger_log_id = ANY($1);
+WHERE id = ANY($1);
 `;
 
 /* ===========================
@@ -95,7 +95,7 @@ function buildHtmlEmail(rows) {
       <td style="max-width:300px; word-wrap:break-word; font-size:11px;">
         ${r.values || 'N/A'}
       </td>
-      <td>${new Date(r.created_at).toLocaleString()}</td>
+      <td>${new Date(r.updated_at).toLocaleString()}</td>
     </tr>
   `).join('');
 
@@ -123,7 +123,7 @@ function buildHtmlEmail(rows) {
           <th>Error Code</th>
           <th>Error Message</th>
           <th>Values</th>
-          <th>Created At</th>
+          <th>Failed At</th>
         </tr>
       </thead>
       <tbody>
@@ -170,7 +170,7 @@ async function run() {
           `\x1b[1m\x1b[31m${rows.length} FAILED record(s) detected in table custom.failed_records\x1b[0m`
         );
     const htmlBody = buildHtmlEmail(rows);
-    const triggerIds = rows.map(r => r.trigger_log_id);
+    const failedRecordIds = rows.map(r => r.id);
 
     console.log('Sending Mailgun notification...');
 
@@ -190,7 +190,7 @@ async function run() {
       console.log(
         '\x1b[1m\x1b[32mMarking records as notified...\x1b[0m'
       );
-      await client.query(MARK_NOTIFIED_SQL, [triggerIds]);
+      await client.query(MARK_NOTIFIED_SQL, [failedRecordIds]);
     } catch (mailError) {
       // Mail issues must NEVER crash the dyno
       console.error('⚠ Mailgun error (non-fatal)');

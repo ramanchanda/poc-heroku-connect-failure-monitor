@@ -214,24 +214,26 @@ async function ensureNotificationSchema(
   `);
 
   await notificationPool.query(`
-    CREATE TABLE IF NOT EXISTS "${schema}".failed_records (
-      trigger_log_id BIGINT PRIMARY KEY,
-      txid BIGINT,
-      created_at TIMESTAMP,
-      updated_at TIMESTAMP,
-      processed_at TIMESTAMP,
-      processed_tx BIGINT,
-      state TEXT,
-      action TEXT,
-      table_name TEXT,
-      record_id TEXT,
-      sfid TEXT,
-      old TEXT,
-      values TEXT,
-      sf_result TEXT,
-      sf_message TEXT,
-      notified BOOLEAN DEFAULT FALSE
-    );
+      CREATE TABLE IF NOT EXISTS "${schema}".failed_records (
+        id BIGSERIAL PRIMARY KEY,
+        trigger_log_id BIGINT NOT NULL,
+        txid BIGINT,
+        created_at TIMESTAMP,
+        updated_at TIMESTAMP,
+        processed_at TIMESTAMP,
+        processed_tx BIGINT,
+        state TEXT,
+        action TEXT,
+        table_name TEXT,
+        record_id TEXT,
+        sfid TEXT,
+        old TEXT,
+        values TEXT,
+        sf_result TEXT,
+        sf_message TEXT,
+        notified BOOLEAN DEFAULT FALSE,
+        UNIQUE (trigger_log_id, updated_at)
+      );
   `);
 }
 
@@ -330,7 +332,7 @@ async function insertFailedRecords(
         $14,
         $15
       )
-      ON CONFLICT (trigger_log_id)
+      ON CONFLICT (trigger_log_id, updated_at)
       DO NOTHING;
     `;
 
@@ -408,11 +410,11 @@ async function fetchUnnotifiedRecords(
 
 async function markAsNotified(
   targetSchema,
-  triggerIds
+  failedRecordIds
 ) {
   if (
-    !triggerIds ||
-    triggerIds.length === 0
+    !failedRecordIds ||
+    failedRecordIds.length === 0
   ) {
     return;
   }
@@ -423,12 +425,12 @@ async function markAsNotified(
   const sql = `
     UPDATE "${schema}".failed_records
     SET notified = true
-    WHERE trigger_log_id = ANY($1);
+    WHERE id = ANY($1);
   `;
 
   await notificationPool.query(
     sql,
-    [triggerIds]
+    [failedRecordIds]
   );
 }
 
@@ -470,7 +472,7 @@ function buildHtmlEmail(
 
       <td>
         ${new Date(
-          r.created_at
+          r.updated_at
         ).toLocaleString()}
       </td>
     </tr>
@@ -534,7 +536,7 @@ function buildHtmlEmail(
           <th>Error Code</th>
           <th>Error Message</th>
           <th>Values</th>
-          <th>Created At</th>
+          <th>Failed At</th>
         </tr>
 
       </thead>
@@ -720,9 +722,9 @@ async function processSource(
       rows
     );
 
-  const triggerIds =
+  const failedRecordIds =
     rows.map(
-      r => r.trigger_log_id
+      r => r.id
     );
 
   console.log(
@@ -753,11 +755,11 @@ async function processSource(
 
     await markAsNotified(
       targetSchema,
-      triggerIds
+      failedRecordIds
     );
 
     console.log(
-      `Marked ${triggerIds.length} ` +
+      `Marked ${failedRecordIds.length} ` +
       `record(s) as notified`
     );
 
